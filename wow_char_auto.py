@@ -120,6 +120,7 @@ DEFAULTS = {
     "relog_enabled": True, "relog_min": 20, "relog_max": 40,
     "stop_on_success": True,
     "test_mode": False,
+    "simple_mode": False,
     "debug_shots": True,
 }
 
@@ -172,6 +173,12 @@ INSTRUCTION = """ИНСТРУКЦИЯ
   "Завершить" — вместо этого подаст звуковой сигнал и остановится.
   Проверь глазами, что персонаж настроен верно, затем сними флажок и
   запусти обычный режим.
+
+УПРОЩЁННЫЙ РЕЖИМ
+- Поставь флажок "Упрощённый режим": программа НЕ трогает расу, класс,
+  внешность и имя (ты выбираешь всё сам в клиенте). Она только циклически
+  нажимает "Завершить", а если появляется окно ошибки — "ОК", и ждёт
+  следующей попытки. Релог в этом режиме отключён.
 
 КАК ЭТО РАБОТАЕТ
 - При старте и после каждого релога программа заново выбирает расу, класс,
@@ -239,6 +246,7 @@ POS = {
     "race_x": {"Альянс": 0.0425, "Орда": 0.1300},
     "race_y": [0.138, 0.213, 0.289, 0.364, 0.444],
     "class_y": 0.924,
+    "class_icon_y": 0.899,   # сама иконка класса (подпись ниже)
     "class_x": [0.320, 0.360, 0.405, 0.4475, 0.490,
                 0.5325, 0.575, 0.6175, 0.660],
     "next": (0.920, 0.932),
@@ -265,6 +273,7 @@ class Bot:
         self.log = log
         self.is_stopped = is_stopped
         self.win = None
+        self.client = (0, 0, 0, 0)
         self.debug_dir = os.path.join(app_dir(), "debug_shots")
         if cfg.get("debug_shots"):
             os.makedirs(self.debug_dir, exist_ok=True)
@@ -277,8 +286,8 @@ class Bot:
         return None
 
     def abs(self, fx, fy):
-        r = self.win
-        return (r.left + fx * r.width, r.top + fy * r.height)
+        x0, y0, cw, ch = self.client
+        return (x0 + fx * cw, y0 + fy * ch)
 
     def click(self, fx, fy, desc=""):
         x, y = self.abs(fx, fy)
@@ -330,8 +339,8 @@ class Bot:
         Кнопка ищется в центральной области экрана по форме
         (широкая горизонтальная красная полоса). False если окна нет."""
         try:
-            r = self.win
-            im = ImageGrab.grab(bbox=(r.left, r.top, r.right, r.bottom),
+            x0, y0, cw, ch = self.client
+            im = ImageGrab.grab(bbox=(x0, y0, x0 + cw, y0 + ch),
                                 all_screens=True)
         except Exception:
             return False
@@ -385,9 +394,37 @@ class Bot:
                 best = (w, (x0 + x1) / 2, (b[0] + b[-1]) / 2)
         if best:
             _, cx, cy = best
+            # проверка фона: кнопка ОК лежит на тёмной бирюзовой панели
+            # диалога; красная одежда модели — на яркой сцене
+            w = best[0]
+            pts = [
+                (cx - w / 2 - 25, cy), (cx + w / 2 + 25, cy),
+                (cx - w / 2 - 25, cy - 15), (cx + w / 2 + 25, cy + 15),
+                (cx, cy - 35), (cx, cy + 35),
+            ]
+            dark = 0
+            for px_, py_ in pts:
+                c = im.getpixel((int(px_), int(py_)))[:3]
+                if sum(c) < 190:
+                    dark += 1
+            if dark < 4:
+                return False
+            # над кнопкой ОК в диалоге всегда несколько строк ярко-жёлтого
+            # текста; у красной одежды модели над «полосой» текста нет
+            def yellow(c):
+                return (c[0] > 180 and c[1] > 150 and c[2] < 130
+                        and c[0] >= c[1] - 20)
+            k = W / 1920.0   # масштаб окна поиска под разрешение
+            n_yellow = 0
+            for py_ in range(int(cy - 160 * k), int(cy - 20 * k), 3):
+                for px_ in range(int(cx - 250 * k), int(cx + 250 * k), 3):
+                    if yellow(im.getpixel((px_, py_))[:3]):
+                        n_yellow += 1
+            if n_yellow < 30:
+                return False
             self.log("Информационное окно с 'ОК' (вероятно, фракция"
                      " недоступна) — нажимаю ОК.")
-            pyautogui.click(int(r.left + cx), int(r.top + cy))
+            pyautogui.click(int(self.client[0] + cx), int(self.client[1] + cy))
             time.sleep(1.0)
             return True
         return False
@@ -396,8 +433,8 @@ class Bot:
         if not self.cfg.get("debug_shots"):
             return
         try:
-            r = self.win
-            im = ImageGrab.grab(bbox=(r.left, r.top, r.right, r.bottom),
+            x0, y0, cw, ch = self.client
+            im = ImageGrab.grab(bbox=(x0, y0, x0 + cw, y0 + ch),
                                 all_screens=True)
             name = time.strftime("%H-%M-%S") + f"_{tag}.png"
             im.save(os.path.join(self.debug_dir, name))
@@ -458,8 +495,21 @@ class Bot:
             self.win.activate()
         except Exception:
             pass
-        self.log(f"Окно найдено: {self.win.title} "
-                 f"{self.win.width}x{self.win.height}")
+        # клиентская область окна (без рамки/заголовка): все координаты
+        # считаются от неё, иначе в оконном режиме всё съезжает
+        class _P(ctypes.Structure):
+            _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+        _rc = ctypes.wintypes.RECT()
+        _pt = _P()
+        _u32 = ctypes.windll.user32
+        _u32.GetClientRect(self.win._hWnd, ctypes.byref(_rc))
+        _u32.ClientToScreen(self.win._hWnd, ctypes.byref(_pt))
+        self.client = (_pt.x, _pt.y,
+                       _rc.right - _rc.left, _rc.bottom - _rc.top)
+        self.log(f"Окно найдено: {self.win.title} {self.win.width}x"
+                 f"{self.win.height}, клиент {self.client[2]}x"
+                 f"{self.client[3]} @({self.client[0]},{self.client[1]})")
 
     def ensure_select_screen(self):
         """Привести клиент к экрану выбора расы/класса (изображение 1)."""
@@ -478,6 +528,41 @@ class Bot:
                 self.sleep(2.5)
         return self.wait_state({"select"}, 20, "ensure_final") == "select"
 
+    def race_selected(self, faction, idx):
+        """Выбрана ли раса? У выбранного портрета верхняя золотая рамка
+        заметно шире (≥60 px), чем тонкая кромка невыбранных."""
+        fx = POS["race_x"][faction]
+        fy = POS["race_y"][idx]
+        x0, y0, cw, ch = self.client
+        k = cw / 2576.0
+        for dyf in (-0.039, -0.0377, -0.0363):
+            y = int(y0 + (fy + dyf) * ch)
+            xa = int(x0 + (fx - 0.04) * cw)
+            xb = int(x0 + (fx + 0.05) * cw)
+            try:
+                im = ImageGrab.grab(bbox=(xa, y, xb, y + 1), all_screens=True)
+            except Exception:
+                return False
+            xs = [x for x in range(im.size[0])
+                  if self._is_frame_gold(im.getpixel((x, 0))[:3])]
+            run = best = 0
+            prev = None
+            for x in xs:
+                if prev is not None and x - prev <= max(2, int(6 * k)):
+                    run += x - prev
+                else:
+                    best = max(best, run)
+                    run = 0
+                prev = x
+            best = max(best, run)
+            if best >= 60 * k:
+                return True
+        return False
+
+    @staticmethod
+    def _is_frame_gold(c):
+        return c[0] > 140 and c[1] > 110 and c[2] < 130
+
     def do_full_flow(self):
         """Полный сценарий: раса/класс/пол -> Далее -> внешность -> имя -> Завершить."""
         cfg = self.cfg
@@ -490,24 +575,46 @@ class Bot:
                         else "gender_male"], f"Пол: {cfg['gender']}")
         self.sleep(0.6)
 
-        # раса
+        # раса: кликаем до появления золотой рамки (макс. 3 попытки;
+        # если мешает окно о недоступности фракции — закрываем его)
         race_list = RACES[cfg["faction"]]
         idx = next((i for i, r in enumerate(race_list)
                     if r["label"] == cfg["race"]), 0)
-        self.click(POS["race_x"][cfg["faction"]], POS["race_y"][idx],
-                   f"Раса: {cfg['race']}")
-        self.sleep(2.0)  # загрузка модели/классов
+        for attempt in range(3):
+            self.click(POS["race_x"][cfg["faction"]], POS["race_y"][idx],
+                       f"Раса: {cfg['race']} (попытка {attempt + 1})")
+            self.sleep(1.6)
+            if self.race_selected(cfg["faction"], idx):
+                break
+            self.ok_dialog_click()   # возможно, окно о недоступной фракции
+            self.sleep(0.8)
+        else:
+            self.log("Раса не выбралась после 3 попыток. Возможно, фракция"
+                     f" '{cfg['faction']}' временно недоступна на этом мире.")
+            return False
+        self.sleep(1.2)  # догрузка модели/классов
 
-        # класс
-        cidx = CLASSES.index(cfg["class"]) if cfg["class"] in CLASSES else 0
-        self.click(POS["class_x"][cidx], POS["class_y"],
-                   f"Класс: {cfg['class']}")
-        self.sleep(0.8)
-
-        # Далее
-        self.click(*POS["next"], "Далее")
-        if not self.wait_state({"custom"}, 15, "after_next"):
-            self.log("Экран кастомизации не появился после 'Далее'.")
+        # класс + Далее, при неудаче — повторная попытка
+        for attempt in range(2):
+            cidx = CLASSES.index(cfg["class"]) if cfg["class"] in CLASSES else 0
+            # иконка класса; дублирующий клик по подписи — безвреден
+            self.click(POS["class_x"][cidx], POS["class_icon_y"],
+                       f"Класс: {cfg['class']} (иконка)")
+            self.sleep(0.5)
+            self.click(POS["class_x"][cidx], POS["class_y"],
+                       f"Класс: {cfg['class']} (подпись)")
+            self.sleep(0.8)
+            self.click(*POS["next"], "Далее")
+            if attempt == 1:
+                self.press("enter", "Enter (дублирует 'Далее')")
+            if self.wait_state({"custom"}, 12, "after_next"):
+                break
+            self.log("Экран кастомизации не появился — повторяю.")
+            self.click(POS["race_x"][cfg["faction"]], POS["race_y"][idx],
+                       f"Раса: {cfg['race']} (повтор)")
+            self.sleep(1.6)
+        else:
+            self.log("Экран кастомизации не появился после повторов.")
             return False
 
         # внешность
@@ -576,24 +683,66 @@ class Bot:
         return state
 
     # --- главный цикл -------------------------------------------------------
+    def run_simple(self):
+        """Упрощённый режим: только 'Завершить' + 'ОК'. Пользователь сам
+        настроил персонажа; бот лишь повторяет попытки создания."""
+        self.log("=== УПРОЩЁННЫЙ РЕЖИМ: цикл «Завершить» + «ОК» ===")
+        attempt = 0
+        while not self.is_stopped():
+            attempt += 1
+            state = self.classify(f"simple{attempt}")
+            if state == "charlist":
+                self.log("Персонаж создан! Открыт список персонажей.")
+                if self.cfg["stop_on_success"]:
+                    return
+            elif state == "custom":
+                self.click(*POS["finish"], "Завершить")
+            elif state == "select":
+                self.click(*POS["next"], "Далее")
+            elif state == "reconnect":
+                self.press("enter", "Enter (переподключение)")
+            else:
+                self.press("enter", "Enter")
+            self.sleep(random.uniform(self.cfg["attempt_min"],
+                                      self.cfg["attempt_max"]))
+            state = self.classify(f"simple_after{attempt}")
+            if state == "charlist":
+                self.log("Персонаж создан! Открыт список персонажей.")
+                if self.cfg["stop_on_success"]:
+                    return
+            elif state == "reconnect":
+                self.press("enter", "Enter (переподключение)")
+                self.sleep(5)
+
     def run(self):
         try:
             self.activate_window()
+            if self.cfg.get("simple_mode"):
+                self.run_simple()
+                return
             self.log("=== Запуск. Полный сценарий создания персонажа ===")
-            self.do_full_flow()
+            flow_ok = self.do_full_flow()
             if self.cfg.get("test_mode"):
                 self.log("=== ТЕСТОВЫЙ РЕЖИМ: 'Завершить' не нажимается ===")
                 try:
                     import winsound
-                    for _ in range(3):
-                        winsound.MessageBeep(winsound.MB_ICONASTERISK)
-                        time.sleep(0.7)
+                    if flow_ok:
+                        for _ in range(3):
+                            winsound.MessageBeep(winsound.MB_ICONASTERISK)
+                            time.sleep(0.7)
+                        self.log("Тестовый прогон завершён. Проверьте, что"
+                                 " раса, класс, внешность и имя настроены"
+                                 " верно, затем запустите обычный режим.")
+                    else:
+                        winsound.MessageBeep(winsound.MB_ICONHAND)
+                        self.log("Тест НЕ ПРОЙДЕН: сценарий не удался."
+                                 " Смотрите лог выше и отладочные скриншоты.")
                 except Exception:
                     self.log("(звуковой сигнал недоступен)")
-                self.log("Тестовый прогон завершён. Проверьте, что раса, класс,"
-                         " внешность и имя настроены верно, затем запустите"
-                         " обычный режим.")
                 return
+            if not flow_ok:
+                self.log("ВНИМАНИЕ: полный сценарий не удался. Попытки"
+                         " продолжатся, но проверьте настройки и экран игры.")
             next_relog = (time.time() + random.uniform(self.cfg["relog_min"],
                                                        self.cfg["relog_max"]) * 60
                           if self.cfg["relog_enabled"] else float("inf"))
@@ -657,6 +806,7 @@ class App(tk.Tk):
         self._build()
         self._load_to_widgets()
         self._sync_race_class()
+        self._sync_simple()
         self.after(100, self._disclaimer)
 
     def _disclaimer(self):
@@ -667,10 +817,9 @@ class App(tk.Tk):
         top.grab_set()
         ttk.Label(top, wraplength=420, justify="center", padding=10,
                   text="Использование кликеров может привести к бану."
-                       " Алгоритм создания разработан для максимальной"
-                       " минимизации шансов обнаружения. Все риски"
-                       " пользователь берёт на себя.\n\n"
-                       "Вы уверены, что готовы использовать приложение?"
+                       " Алгоритм создания разработан для минимизации шансов"
+                       " обнаружения. Все риски пользователь берёт на себя."
+                       "\n\nВы уверены, что готовы использовать приложение?"
                   ).pack(fill="both", expand=True)
         f = ttk.Frame(top, padding=10)
         f.pack(fill="x")
@@ -724,50 +873,68 @@ class App(tk.Tk):
         ttk.Separator(left).grid(row=r, column=0, columnspan=2, sticky="ew", pady=6)
         r += 1
 
-        ttk.Label(left, text="Основное имя:").grid(row=r, column=0, sticky="w")
-        self.en_first = ttk.Entry(left, width=20)
-        self.en_first.grid(row=r, column=1, sticky="w", pady=2)
-        r += 1
-        ttk.Label(left, text="Второе имя:").grid(row=r, column=0, sticky="w")
-        self.en_last = ttk.Entry(left, width=20)
-        self.en_last.grid(row=r, column=1, sticky="w", pady=2)
-        r += 1
-        ttk.Label(left, text="(рус/латиница, 2-12 символов, без пробелов)",
-                  foreground="#666").grid(row=r, column=0, columnspan=2, sticky="w")
+        self.var_simple = tk.BooleanVar()
+        ttk.Checkbutton(left, text="Упрощённый режим (только «Завершить»/«ОК»,"
+                                   " без настройки персонажа)",
+                        variable=self.var_simple,
+                        command=self._sync_simple).grid(row=r, column=0,
+                                                        columnspan=2, sticky="w")
         r += 1
 
         ttk.Separator(left).grid(row=r, column=0, columnspan=2, sticky="ew", pady=6)
         r += 1
 
-        ttk.Label(left, text="Фракция:").grid(row=r, column=0, sticky="w")
-        self.cb_faction = ttk.Combobox(left, values=list(RACES.keys()),
+        # --- поля настройки персонажа (прячутся в упрощённом режиме) ---
+        cf = ttk.Frame(left)
+        cf.grid(row=r, column=0, columnspan=2, sticky="ew")
+        self.custom_frame = cf
+        cr = 0
+
+        ttk.Label(cf, text="Основное имя:").grid(row=cr, column=0, sticky="w")
+        self.en_first = ttk.Entry(cf, width=20)
+        self.en_first.grid(row=cr, column=1, sticky="w", pady=2)
+        cr += 1
+        ttk.Label(cf, text="Второе имя:").grid(row=cr, column=0, sticky="w")
+        self.en_last = ttk.Entry(cf, width=20)
+        self.en_last.grid(row=cr, column=1, sticky="w", pady=2)
+        cr += 1
+        ttk.Label(cf, text="(рус/латиница, 2-12 символов, без пробелов)",
+                  foreground="#666").grid(row=cr, column=0, columnspan=2, sticky="w")
+        cr += 1
+
+        ttk.Separator(cf).grid(row=cr, column=0, columnspan=2, sticky="ew", pady=6)
+        cr += 1
+
+        ttk.Label(cf, text="Фракция:").grid(row=cr, column=0, sticky="w")
+        self.cb_faction = ttk.Combobox(cf, values=list(RACES.keys()),
                                        state="readonly", width=18)
-        self.cb_faction.grid(row=r, column=1, sticky="w", pady=2)
+        self.cb_faction.grid(row=cr, column=1, sticky="w", pady=2)
         self.cb_faction.bind("<<ComboboxSelected>>", self._sync_race_class)
-        r += 1
-        ttk.Label(left, text="Раса:").grid(row=r, column=0, sticky="w")
-        self.cb_race = ttk.Combobox(left, state="readonly", width=18)
-        self.cb_race.grid(row=r, column=1, sticky="w", pady=2)
+        cr += 1
+        ttk.Label(cf, text="Раса:").grid(row=cr, column=0, sticky="w")
+        self.cb_race = ttk.Combobox(cf, state="readonly", width=18)
+        self.cb_race.grid(row=cr, column=1, sticky="w", pady=2)
         self.cb_race.bind("<<ComboboxSelected>>", self._sync_race_class)
-        r += 1
-        ttk.Label(left, text="Пол:").grid(row=r, column=0, sticky="w")
-        self.cb_gender = ttk.Combobox(left, values=["Мужской", "Женский"],
+        cr += 1
+        ttk.Label(cf, text="Пол:").grid(row=cr, column=0, sticky="w")
+        self.cb_gender = ttk.Combobox(cf, values=["Мужской", "Женский"],
                                       state="readonly", width=18)
-        self.cb_gender.grid(row=r, column=1, sticky="w", pady=2)
+        self.cb_gender.grid(row=cr, column=1, sticky="w", pady=2)
         self.cb_gender.bind("<<ComboboxSelected>>", self._sync_race_class)
-        r += 1
-        ttk.Label(left, text="Класс:").grid(row=r, column=0, sticky="w")
-        self.cb_class = ttk.Combobox(left, state="readonly", width=18)
-        self.cb_class.grid(row=r, column=1, sticky="w", pady=2)
-        r += 1
+        cr += 1
+        ttk.Label(cf, text="Класс:").grid(row=cr, column=0, sticky="w")
+        self.cb_class = ttk.Combobox(cf, state="readonly", width=18)
+        self.cb_class.grid(row=cr, column=1, sticky="w", pady=2)
+        cr += 1
 
-        ttk.Separator(left).grid(row=r, column=0, columnspan=2, sticky="ew", pady=6)
-        r += 1
+        ttk.Separator(cf).grid(row=cr, column=0, columnspan=2, sticky="ew", pady=6)
+        cr += 1
 
-        appf = ttk.LabelFrame(left, text="Внешность (число = нажатий правой стрелки)")
-        appf.grid(row=r, column=0, columnspan=2, sticky="ew", pady=4)
+        appf = ttk.LabelFrame(cf, text="Внешность (число = нажатий правой стрелки)")
+        appf.grid(row=cr, column=0, columnspan=2, sticky="ew", pady=4)
         self.app_widgets = {}  # feature -> Combobox
         self.app_frame = appf
+        cr += 1
         r += 1
 
         ttk.Separator(left).grid(row=r, column=0, columnspan=2, sticky="ew", pady=6)
@@ -815,6 +982,14 @@ class App(tk.Tk):
         self.log_text = scrolledtext.ScrolledText(right, state="disabled",
                                                   wrap="word")
         self.log_text.grid(row=0, column=0, sticky="nsew")
+
+    def _sync_simple(self):
+        """В упрощённом режиме поля настройки персонажа скрыты
+        и их значения ботом не используются."""
+        if self.var_simple.get():
+            self.custom_frame.grid_remove()
+        else:
+            self.custom_frame.grid()
 
     def _appearance_values(self):
         return ["По умолчанию"] + [str(i) for i in range(1, 13)] + ["Случайно"]
@@ -873,6 +1048,7 @@ class App(tk.Tk):
         self.var_stop_success.set(c["stop_on_success"])
         self.var_debug.set(c["debug_shots"])
         self.var_test.set(c.get("test_mode", False))
+        self.var_simple.set(c.get("simple_mode", False))
 
     def _collect_cfg(self):
         c = dict(self.cfg)
@@ -892,6 +1068,7 @@ class App(tk.Tk):
         c["stop_on_success"] = self.var_stop_success.get()
         c["debug_shots"] = self.var_debug.get()
         c["test_mode"] = self.var_test.get()
+        c["simple_mode"] = self.var_simple.get()
         return c
 
     # --- лог ------------------------------------------------------------------
@@ -914,6 +1091,13 @@ class App(tk.Tk):
 
     # --- управление ------------------------------------------------------------
     def validate(self, c):
+        if c.get("simple_mode"):
+            if c["attempt_min"] > c["attempt_max"]:
+                messagebox.showerror("Проверка", "Интервал попыток:"
+                                     " 'от' больше 'до'.")
+                return False
+            return True   # имя/раса/класс/внешность в упрощённом режиме
+                          # не используются — пользователь всё выбрал сам
         for key, label in (("firstname", "Основное имя"),
                            ("lastname", "Второе имя")):
             if not NAME_RE.match(c[key]):
