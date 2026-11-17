@@ -40,15 +40,20 @@ CLASSES = ["Воин", "Охотник", "Маг", "Разбойник", "Жре
            "Чернокнижник", "Паладин", "Друид", "Шаман"]
 
 # ---------------------------------------------------------------------------
-# Справочник рас/классов/внешности.
-# ВНИМАНИЕ: состав классов и списки внешности для рас, помеченных (*),
-# восстановлены по классическому клиенту 1.12 и скриншотам — проверьте в игре
-# и сообщите, если на сервере иначе (правится в этом словаре).
+# Справочник рас/классов/внешности (WoW: Forever, Classic+, клиент 1.60.1).
+# ПРОВЕРЕНО НА ЖИВОМ КЛИЕНТЕ: все 10 рас × оба пола сняты скриншотами
+# (съёмка 2026-11-17, разрешение 2560x1440).
+# Классы — по официальным данным Forever (6 новых сочетаний: человек-охотник,
+# гном-жрец, дворф-шаман, тролль-чернокнижник, орк-маг, отрекшийся-паладин;
+# у Небеснорождённых за Альянс — маг, за Орду — шаман).
+# "ystart" — Y-координата (доля окна) первого слайдера внешности.
+# У нежити панель без иконок вкладок, поэтому слайдеры начинаются выше.
 # ---------------------------------------------------------------------------
-def _r(label, classes, male_features, female_features=None):
+def _r(label, classes, male_features, ystart=0.2833, female_features=None):
     return {
         "label": label,
         "classes": classes,
+        "ystart": ystart,
         "features": {
             "Мужской": male_features,
             "Женский": female_features if female_features else list(male_features),
@@ -58,51 +63,48 @@ def _r(label, classes, male_features, female_features=None):
 RACES = {
     "Альянс": [
         _r("Человек",
-           ["Воин", "Разбойник", "Жрец", "Маг", "Чернокнижник", "Паладин"],
-           ["Цвет кожи", "Лицо", "Прическа", "Цвет волос", "Детали лица", "Борода"],
-           ["Цвет кожи", "Лицо", "Прическа", "Цвет волос", "Детали лица"]),
+           ["Воин", "Охотник", "Разбойник", "Жрец", "Маг", "Чернокнижник",
+            "Паладин"],
+           ["Цвет кожи", "Лицо", "Прическа", "Цвет волос", "Цвет глаз",
+            "Брови", "Форма лица"]),
         _r("Дворф",
            ["Воин", "Охотник", "Разбойник", "Жрец", "Паладин", "Шаман"],
-           ["Цвет кожи", "Лицо", "Прическа", "Цвет волос", "Детали лица", "Борода"],
-           ["Цвет кожи", "Лицо", "Прическа", "Цвет волос", "Детали лица"]),
+           ["Цвет кожи", "Лицо", "Прическа", "Цвет волос", "Цвет глаз"]),
         _r("Ночной эльф",
            ["Воин", "Охотник", "Разбойник", "Жрец", "Друид"],
-           ["Цвет кожи", "Лицо", "Прическа", "Цвет волос", "Детали лица", "Борода"],
-           ["Цвет кожи", "Лицо", "Прическа", "Цвет волос", "Детали лица"]),
+           ["Цвет кожи", "Лицо", "Прическа", "Цвет волос", "Цвет глаз"],
+           female_features=["Цвет кожи", "Лицо", "Прическа", "Цвет волос",
+                            "Брови"]),
         _r("Гном",
-           ["Воин", "Разбойник", "Маг", "Чернокнижник"],
-           ["Цвет кожи", "Лицо", "Прическа", "Цвет волос", "Детали лица"],
-           ["Цвет кожи", "Лицо", "Прическа", "Цвет волос", "Детали лица"]),
-        _r("Небеснорождённый (*)",
-           ["Воин", "Охотник", "Разбойник", "Жрец", "Маг", "Паладин"],
-           ["Цвет кожи", "Лицо", "Прическа", "Цвет волос", "Цвет глаз", "Детали лица"],
-           ["Цвет кожи", "Лицо", "Прическа", "Цвет волос", "Цвет глаз", "Детали лица"]),
+           ["Воин", "Разбойник", "Жрец", "Маг", "Чернокнижник"],
+           ["Цвет кожи", "Лицо", "Прическа", "Цвет волос", "Брови"],
+           female_features=["Цвет кожи", "Лицо", "Прическа", "Цвет волос",
+                            "Цвет глаз"]),
+        _r("Небеснорождённый",
+           ["Воин", "Охотник", "Разбойник", "Друид", "Маг"],
+           ["Цвет кожи", "Лицо", "Прическа", "Цвет волос", "Уши",
+            "Цвет глаз", "Вид бровей"]),
     ],
     "Орда": [
         _r("Орк",
-           ["Воин", "Охотник", "Разбойник", "Чернокнижник", "Шаман"],
-           ["Цвет кожи", "Лицо", "Прическа", "Цвет волос", "Цвет глаз"],
+           ["Воин", "Охотник", "Маг", "Разбойник", "Чернокнижник", "Шаман"],
            ["Цвет кожи", "Лицо", "Прическа", "Цвет волос", "Цвет глаз"]),
         _r("Нежить",
-           ["Воин", "Разбойник", "Жрец", "Маг", "Чернокнижник"],
+           ["Воин", "Разбойник", "Жрец", "Маг", "Чернокнижник", "Паладин"],
            ["Цвет кожи", "Лицо", "Прическа", "Цвет волос",
             "Особенности лица", "Челюсть", "Сияние глаз"],
-           ["Цвет кожи", "Лицо", "Прическа", "Цвет волос",
-            "Особенности лица", "Челюсть", "Сияние глаз"]),
-        _r("Таурен (*)",
+           ystart=0.2208),
+        _r("Таурен",
            ["Воин", "Охотник", "Друид", "Шаман"],
-           ["Цвет кожи", "Морда", "Рога", "Грива", "Цвет глаз"],
-           ["Цвет кожи", "Морда", "Рога", "Грива", "Цвет глаз"]),
-        _r("Тролль (*)",
-           ["Воин", "Охотник", "Разбойник", "Жрец", "Маг", "Шаман"],
-           ["Цвет кожи", "Лицо", "Прическа", "Цвет волос",
-            "Раскраска лица", "Клыки"],
-           ["Цвет кожи", "Лицо", "Прическа", "Цвет волос",
-            "Раскраска лица", "Клыки"]),
-        _r("Небеснорождённый (*)",
-           ["Воин", "Охотник", "Разбойник", "Жрец", "Маг", "Шаман"],
-           ["Цвет кожи", "Лицо", "Прическа", "Цвет волос", "Цвет глаз", "Детали лица"],
-           ["Цвет кожи", "Лицо", "Прическа", "Цвет волос", "Цвет глаз", "Детали лица"]),
+           ["Цвет кожи", "Лицо", "Волосы", "Цвет глаз"]),
+        _r("Тролль",
+           ["Воин", "Охотник", "Разбойник", "Жрец", "Маг", "Чернокнижник",
+            "Шаман"],
+           ["Цвет кожи", "Лицо", "Прическа", "Цвет волос", "Цвет глаз"]),
+        _r("Небеснорождённый",
+           ["Воин", "Охотник", "Разбойник", "Друид", "Шаман"],
+           ["Цвет кожи", "Лицо", "Прическа", "Цвет волос", "Уши",
+            "Цвет глаз", "Вид бровей"]),
     ],
 }
 
@@ -117,10 +119,35 @@ DEFAULTS = {
     "appearance": {},
     "relog_enabled": True, "relog_min": 20, "relog_max": 40,
     "stop_on_success": True,
+    "test_mode": False,
     "debug_shots": True,
 }
 
-NAME_RE = re.compile(r"^[A-Za-z]{2,12}$")
+NAME_RE = re.compile(r"^[A-Za-zА-Яа-яЁё]{2,12}$")
+
+
+def type_text(text):
+    """Вставка текста через буфер обмена (Ctrl+V) — точно не зависит
+    от текущей раскладки клавиатуры и поддерживает кириллицу."""
+    data = text.encode("utf-16-le") + b"\x00\x00"
+    kernel32 = ctypes.windll.kernel32
+    user32 = ctypes.windll.user32
+    vp = ctypes.c_void_p
+    kernel32.GlobalAlloc.restype = vp
+    kernel32.GlobalAlloc.argtypes = [ctypes.c_uint, ctypes.c_size_t]
+    kernel32.GlobalLock.restype = vp
+    kernel32.GlobalLock.argtypes = [vp]
+    kernel32.GlobalUnlock.argtypes = [vp]
+    user32.SetClipboardData.argtypes = [ctypes.c_uint, vp]
+    h = kernel32.GlobalAlloc(0x0002, len(data))       # GMEM_MOVEABLE
+    p = kernel32.GlobalLock(h)
+    ctypes.memmove(p, data, len(data))
+    kernel32.GlobalUnlock(h)
+    user32.OpenClipboard(None)
+    user32.EmptyClipboard()
+    user32.SetClipboardData(13, h)                    # CF_UNICODETEXT
+    user32.CloseClipboard()
+    pyautogui.hotkey("ctrl", "v")
 
 INSTRUCTION = """ИНСТРУКЦИЯ
 
@@ -130,7 +157,8 @@ INSTRUCTION = """ИНСТРУКЦИЯ
 3. В игре выставь разрешение, совпадающее с выбранным в программе
    (программа кликает пропорционально размеру окна, но совпадение
    разрешения повышает точность).
-4. Заполни настройки: имя/фамилия (латиница, 2-12 символов, без пробелов),
+4. Заполни настройки: имя/фамилия (русские или латинские буквы, 2-12
+   символов, без пробелов),
    фракцию, расу, пол, класс, параметры внешности.
    Для каждого параметра внешности:
      "По умолчанию" — не трогать;
@@ -138,11 +166,20 @@ INSTRUCTION = """ИНСТРУКЦИЯ
      "Случайно" — случайное число нажатий (1-8).
 5. Нажми "Старт" и не трогай мышь/клавиатуру.
 
+ТЕСТОВЫЙ РЕЖИМ
+- Поставь флажок "Тестовый режим" и нажми "Старт": программа пройдет весь
+  сценарий (раса, класс, пол, внешность, имя), но НЕ будет нажимать
+  "Завершить" — вместо этого подаст звуковой сигнал и остановится.
+  Проверь глазами, что персонаж настроен верно, затем сними флажок и
+  запусти обычный режим.
+
 КАК ЭТО РАБОТАЕТ
 - При старте и после каждого релога программа заново выбирает расу, класс,
   пол, настраивает внешность и вводит имя.
 - Далее цикл: нажимает "Завершить" и ждет. Если персонаж не создан
   (ошибка сети) — ждет случайный интервал из диапазона и повторяет.
+- Если сервер отвечает, что фракция временно недоступна, программа сама
+  нажмет "ОК" в информационном окне и повторит попытку.
 - Если включен релог, раз в указанный диапазон минут программа жмет Esc
   (выход к экрану "Переподключение"), затем Enter и повторяет весь цикл.
 - При появлении списка персонажей программа считает создание успешным
@@ -157,6 +194,8 @@ INSTRUCTION = """ИНСТРУКЦИЯ
 - Если включены отладочные скриншоты, в папке debug_shots сохраняются
   снимки экрана на каждой проверке состояния — пришли их, если
   программа ошибочно определяет экран.
+- Если случайно откроется Главное меню (Esc) — программа сама нажмет
+  "Закрыть" и продолжит работу.
 """
 
 
@@ -207,10 +246,10 @@ POS = {
     "finish": (0.9175, 0.932),
     "name_first": (0.415, 0.0435),
     "name_last": (0.579, 0.0435),
-    "arrow_right_x": 0.972,
-    "arrow_left_x": 0.8615,
-    "feature_center_y": 0.417,
-    "feature_step_y": 0.0698,
+    "arrow_right_x": 0.9746,
+    "arrow_left_x": 0.8602,
+    "feature_step_y": 0.0716,
+    "feature_ystart": 0.2833,   # у нежити 0.2208 (см. RACES)
     "reconnect": (0.5, 0.491),
     # контрольные точки для определения состояния экрана
     "probe_gender": (0.4825, 0.0385),   # иконка пола — яркая на экране выбора расы
@@ -285,6 +324,74 @@ class Bot:
     def is_bright(c):
         return sum(c) > 300
 
+    def ok_dialog_click(self):
+        """Если открыт информационный диалог с красной кнопкой 'ОК'
+        (напр. 'фракция временно недоступна') — нажать ОК.
+        Кнопка ищется в центральной области экрана по форме
+        (широкая горизонтальная красная полоса). False если окна нет."""
+        try:
+            r = self.win
+            im = ImageGrab.grab(bbox=(r.left, r.top, r.right, r.bottom),
+                                all_screens=True)
+        except Exception:
+            return False
+        W, H = im.size
+        step = 5
+        y_start, y_end = int(H * 0.2), int(H * 0.9)
+        x_start, x_end = int(W * 0.1), int(W * 0.9)
+        rows = {}
+        for y in range(y_start, y_end, step):
+            xs = [x for x in range(x_start, x_end, step)
+                  if self.is_red(im.getpixel((x, y))[:3])]
+            if not xs:
+                continue
+            # самый длинный почти непрерывный пробег красного в строке
+            best_run = None
+            cur = [xs[0], xs[0]]
+            for x in xs[1:]:
+                if x - cur[1] <= step * 3:
+                    cur[1] = x
+                else:
+                    if best_run is None or cur[1] - cur[0] > best_run[1] - best_run[0]:
+                        best_run = list(cur)
+                    cur = [x, x]
+            if best_run is None or cur[1] - cur[0] > best_run[1] - best_run[0]:
+                best_run = cur
+            if best_run[1] - best_run[0] >= 50:   # ширина кнопки >= ~50px
+                rows[y] = best_run
+        if not rows:
+            return False
+        # группируем соседние строки в полосу (высота кнопки)
+        ys_sorted = sorted(rows)
+        band, bands = [ys_sorted[0]], []
+        for y in ys_sorted[1:]:
+            if y - band[-1] <= step * 5:   # допуск на «дырявый» градиент кнопки
+                band.append(y)
+            else:
+                bands.append(band)
+                band = [y]
+        bands.append(band)
+        best = None
+        for b in bands:                       # ищем кнопку
+            h = b[-1] - b[0]
+            if not (8 <= h <= 90):
+                continue
+            x0 = min(rows[y][0] for y in b)
+            x1 = max(rows[y][1] for y in b)
+            w = x1 - x0
+            if w < 120 or w / max(h, 1) < 3:    # кнопка: широкая и низкая
+                continue
+            if best is None or w > best[0]:
+                best = (w, (x0 + x1) / 2, (b[0] + b[-1]) / 2)
+        if best:
+            _, cx, cy = best
+            self.log("Информационное окно с 'ОК' (вероятно, фракция"
+                     " недоступна) — нажимаю ОК.")
+            pyautogui.click(int(r.left + cx), int(r.top + cy))
+            time.sleep(1.0)
+            return True
+        return False
+
     def screenshot_debug(self, tag):
         if not self.cfg.get("debug_shots"):
             return
@@ -298,6 +405,16 @@ class Bot:
             pass
 
     def classify(self, tag="check"):
+        # если открыто Главное меню (Esc) — закрыть и классифицировать заново
+        cols = [self.pixel(0.4434, fy) for fy in (0.3819, 0.4861, 0.5903)]
+        if all(50 <= c[0] <= 130 and 30 <= c[1] <= 90 and 15 <= c[2] <= 60
+               for c in cols):
+            self.log("Открыто Главное меню (Esc) — закрываю.")
+            self.click(0.5, 0.611, "Закрыть")
+            time.sleep(1.2)
+        # информационный диалог с кнопкой "ОК" (напр. "фракция недоступна")
+        if self.ok_dialog_click():
+            time.sleep(0.5)
         p_gender = self.pixel(*POS["probe_gender"])
         p_recon = self.pixel(*POS["probe_reconnect"])
         p_right = self.pixel(*POS["probe_right"])
@@ -395,28 +512,28 @@ class Bot:
 
         # внешность
         features = race_list[idx]["features"][cfg["gender"]]
-        n = len(features)
+        ystart = race_list[idx].get("ystart", 0.2833)
         app = cfg.get("appearance", {})
         for i, fname in enumerate(features):
             val = app.get(fname, "0")
             if val == "Случайно":
                 val = str(random.randint(1, 8))
             if val.isdigit() and int(val) > 0:
-                fy = POS["feature_center_y"] + (i - (n - 1) / 2) * POS["feature_step_y"]
+                fy = ystart + i * POS["feature_step_y"]
                 for _ in range(int(val)):
                     self.click(POS["arrow_right_x"], fy, f"Внешность: {fname} +1")
                     self.sleep(0.2)
         self.sleep(0.4)
 
-        # имя
+        # имя (вставка через буфер обмена — не зависит от раскладки)
         self.click(*POS["name_first"], "Поле: основное имя")
         self.sleep(0.3)
         pyautogui.hotkey("ctrl", "a")
-        pyautogui.write(cfg["firstname"], interval=0.05)
+        type_text(cfg["firstname"])
         self.click(*POS["name_last"], "Поле: второе имя")
         self.sleep(0.3)
         pyautogui.hotkey("ctrl", "a")
-        pyautogui.write(cfg["lastname"], interval=0.05)
+        type_text(cfg["lastname"])
         self.sleep(0.5)
         return True
 
@@ -464,6 +581,19 @@ class Bot:
             self.activate_window()
             self.log("=== Запуск. Полный сценарий создания персонажа ===")
             self.do_full_flow()
+            if self.cfg.get("test_mode"):
+                self.log("=== ТЕСТОВЫЙ РЕЖИМ: 'Завершить' не нажимается ===")
+                try:
+                    import winsound
+                    for _ in range(3):
+                        winsound.MessageBeep(winsound.MB_ICONASTERISK)
+                        time.sleep(0.7)
+                except Exception:
+                    self.log("(звуковой сигнал недоступен)")
+                self.log("Тестовый прогон завершён. Проверьте, что раса, класс,"
+                         " внешность и имя настроены верно, затем запустите"
+                         " обычный режим.")
+                return
             next_relog = (time.time() + random.uniform(self.cfg["relog_min"],
                                                        self.cfg["relog_max"]) * 60
                           if self.cfg["relog_enabled"] else float("inf"))
@@ -527,6 +657,37 @@ class App(tk.Tk):
         self._build()
         self._load_to_widgets()
         self._sync_race_class()
+        self.after(100, self._disclaimer)
+
+    def _disclaimer(self):
+        top = tk.Toplevel(self)
+        top.title("Внимание")
+        top.resizable(False, False)
+        top.transient(self)
+        top.grab_set()
+        ttk.Label(top, wraplength=420, justify="center", padding=10,
+                  text="Использование кликеров может привести к бану."
+                       " Алгоритм создания разработан для максимальной"
+                       " минимизации шансов обнаружения. Все риски"
+                       " пользователь берёт на себя.\n\n"
+                       "Вы уверены, что готовы использовать приложение?"
+                  ).pack(fill="both", expand=True)
+        f = ttk.Frame(top, padding=10)
+        f.pack(fill="x")
+        ttk.Button(f, text="Ну его на фиг",
+                   command=self.destroy).pack(side="left", expand=True,
+                                              fill="x", padx=(0, 5))
+        ttk.Button(f, text="Газгаз",
+                   command=top.destroy).pack(side="left", expand=True,
+                                             fill="x", padx=(5, 0))
+        # центрирование по главному окну
+        top.update_idletasks()
+        w, h = top.winfo_reqwidth(), top.winfo_reqheight()
+        self.update_idletasks()
+        x = self.winfo_x() + (self.winfo_width() - w) // 2
+        y = self.winfo_y() + (self.winfo_height() - h) // 2
+        top.geometry(f"{w}x{h}+{max(x, 0)}+{max(y, 0)}")
+        top.protocol("WM_DELETE_WINDOW", self.destroy)
 
     # --- построение интерфейса ---------------------------------------------
     def _build(self):
@@ -571,7 +732,7 @@ class App(tk.Tk):
         self.en_last = ttk.Entry(left, width=20)
         self.en_last.grid(row=r, column=1, sticky="w", pady=2)
         r += 1
-        ttk.Label(left, text="(латиница, 2-12 символов, без пробелов)",
+        ttk.Label(left, text="(рус/латиница, 2-12 символов, без пробелов)",
                   foreground="#666").grid(row=r, column=0, columnspan=2, sticky="w")
         r += 1
 
@@ -627,6 +788,12 @@ class App(tk.Tk):
         ttk.Checkbutton(left, text="Остановиться после успешного создания",
                         variable=self.var_stop_success).grid(row=r, column=0,
                                                              columnspan=2, sticky="w")
+        r += 1
+        self.var_test = tk.BooleanVar()
+        ttk.Checkbutton(left, text="Тестовый режим (1 прогон: звук вместо"
+                                   " «Завершить»)",
+                        variable=self.var_test).grid(row=r, column=0,
+                                                     columnspan=2, sticky="w")
         r += 1
         self.var_debug = tk.BooleanVar()
         ttk.Checkbutton(left, text="Отладочные скриншоты (debug_shots)",
@@ -705,6 +872,7 @@ class App(tk.Tk):
         self.sp_rmax.delete(0, "end"); self.sp_rmax.insert(0, str(c["relog_max"]))
         self.var_stop_success.set(c["stop_on_success"])
         self.var_debug.set(c["debug_shots"])
+        self.var_test.set(c.get("test_mode", False))
 
     def _collect_cfg(self):
         c = dict(self.cfg)
@@ -723,6 +891,7 @@ class App(tk.Tk):
         c["relog_max"] = int(self.sp_rmax.get())
         c["stop_on_success"] = self.var_stop_success.get()
         c["debug_shots"] = self.var_debug.get()
+        c["test_mode"] = self.var_test.get()
         return c
 
     # --- лог ------------------------------------------------------------------
@@ -749,8 +918,8 @@ class App(tk.Tk):
                            ("lastname", "Второе имя")):
             if not NAME_RE.match(c[key]):
                 messagebox.showerror("Проверка имени",
-                                     f"{label}: латиница, 2-12 символов, "
-                                     f"без пробелов.")
+                                     f"{label}: русские или латинские буквы,"
+                                     f" 2-12 символов, без пробелов.")
                 return False
         if c["attempt_min"] > c["attempt_max"]:
             messagebox.showerror("Проверка", "Интервал попыток: 'от' больше 'до'.")

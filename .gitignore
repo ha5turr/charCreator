@@ -1,1 +1,8 @@
-.exe
+__pycache__/
+build/
+dist/
+*.spec
+*.json
+*_log.txt
+debug_shots/
+survey_*.png
