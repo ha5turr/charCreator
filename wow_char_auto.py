@@ -33,7 +33,7 @@ pyautogui.FAILSAFE = True  # экстренная остановка: мышь �
 pyautogui.PAUSE = 0.05
 
 APP_NAME = "WoW Forever — Автосоздание персонажа"
-APP_VERSION = "0.0.0"
+APP_VERSION = "0.1.0"
 SETTINGS_FILE = "wow_char_auto_settings.json"
 LOG_FILE = "wow_char_auto_log.txt"
 
@@ -119,6 +119,7 @@ DEFAULTS = {
     "gender": "Мужской", "class": "Чернокнижник",
     "appearance": {},
     "relog_enabled": True, "relog_min": 20, "relog_max": 40,
+    "has_other_server_chars": False,
     "stop_on_success": True,
     "test_mode": False,
     "simple_mode": False,
@@ -200,6 +201,11 @@ INSTRUCTION = """ИНСТРУКЦИЯ
   нажмет "ОК" в информационном окне и повторит попытку.
 - Если включен релог, раз в указанный диапазон минут программа жмет Esc
   (выход к экрану "Переподключение"), затем Enter и повторяет весь цикл.
+- Если отмечено "Есть персонажи на других серверах", программа выходит
+  кнопками "Назад": кастомизация → выбор расы (1 секунда) → список PvP
+  (5 секунд) → переподключение (10 секунд). После Enter программа ждет
+  20 секунд, нажимает "Свод правил", через 5 секунд выбирает PvP,
+  нажимает "Выбрать" и ждет 30 секунд до экрана создания персонажа.
 - При появлении списка персонажей программа считает создание успешным
   и останавливается (если не снят флажок "Остановиться после успеха").
 
@@ -262,6 +268,7 @@ POS = {
                 0.5325, 0.575, 0.6175, 0.660],
     "next": (0.920, 0.932),
     "back": (0.083, 0.932),
+    "charlist_back": (0.055, 0.969),
     "finish": (0.9175, 0.932),
     "name_first": (0.415, 0.0435),
     "name_last": (0.579, 0.0435),
@@ -271,6 +278,9 @@ POS = {
     "feature_step_y": 0.0716,
     "feature_ystart": 0.2833,   # у нежити 0.2208 (см. RACES)
     "reconnect": (0.5, 0.491),
+    "charlist_rules": (0.566, 0.027),
+    "realm_pvp": (0.434, 0.520),
+    "realm_choose": (0.932, 0.953),
     # контрольные точки для определения состояния экрана
     "probe_gender": (0.4825, 0.0385),   # иконка пола — яркая на экране выбора расы
     "probe_reconnect": (0.5, 0.491),    # красная кнопка "Переподключение"
@@ -696,15 +706,14 @@ class Bot:
                     self.sleep(0.2)
         self.sleep(0.4)
 
-        # имя (Unicode-ввод не зависит от раскладки клавиатуры)
+        # имя (полная очистка + Unicode-ввод не зависит от раскладки)
         for pos, desc, text in (
                 (POS["name_first"], "Поле: основное имя", cfg["firstname"]),
                 (POS["name_last"], "Поле: второе имя", cfg["lastname"])):
             self.click(*pos, desc)
             self.sleep(0.6)
-            pyautogui.hotkey("ctrl", "a")
-            self.sleep(0.15)
-            pyautogui.press("delete")
+            pyautogui.press("end")
+            pyautogui.press("backspace", presses=24, interval=0.03)
             self.sleep(0.3)
             type_text(text)
             self.sleep(0.4)
@@ -712,16 +721,66 @@ class Bot:
             return False
         return True
 
+    def enter_pvp_after_relog(self):
+        self.log("Вход после релога: выбор PvP-сервера.")
+        self.sleep(20)
+        state = self.classify("relog_charlist")
+        if state != "charlist":
+            self.log("После переподключения не открылся список персонажей. "
+                     "Выбор PvP-сервера отменён.")
+            return False
+        self.click(*POS["charlist_rules"], "Свод правил")
+        self.sleep(5)
+        self.click(*POS["realm_pvp"], "Тип игрового мира: PvP")
+        self.sleep(1)
+        self.click(*POS["realm_choose"], "Выбрать PvP-сервер")
+        self.sleep(30)
+        if not self.wait_state({"select"}, 10, "after_relog_pvp"):
+            self.log("После выбора PvP-сервера экран создания персонажа "
+                     "не определился, пробую продолжить.")
+        return True
+
+    def exit_to_reconnect(self):
+        self.log("Выход к переподключению через список персонажей PvP.")
+        state = self.classify("relog_exit_start")
+        if state == "reconnect":
+            return True
+        if state == "custom":
+            self.click(*POS["back"], "Назад (из кастомизации)")
+            self.sleep(1)
+            state = self.classify("relog_exit_select")
+        if state == "select":
+            self.click(*POS["back"], "Назад (из выбора расы и класса)")
+            self.sleep(5)
+            state = self.classify("relog_exit_charlist")
+        if state != "charlist":
+            self.log("Не открылся список персонажей PvP. "
+                     "Выход к переподключению отменён.")
+            return False
+        self.click(*POS["charlist_back"], "Назад (из списка персонажей PvP)")
+        self.sleep(10)
+        if self.classify("relog_exit_reconnect") != "reconnect":
+            self.log("Экран переподключения не появился.")
+            return False
+        return True
+
     def do_relog(self):
         self.log("=== Релог ===")
-        self.press("esc", "Esc (к экрану переподключения)")
-        self.sleep(3)
-        state = self.classify("relog")
-        if state != "reconnect":
-            self.press("esc", "Esc (повторно)")
-            self.sleep(2)
+        if self.cfg.get("has_other_server_chars"):
+            if not self.exit_to_reconnect():
+                return False
+        else:
+            self.press("esc", "Esc (к экрану переподключения)")
+            self.sleep(3)
+            state = self.classify("relog")
+            if state != "reconnect":
+                self.press("esc", "Esc (повторно)")
+                self.sleep(2)
         self.press("enter", "Enter (переподключение)")
-        if not self.wait_state({"select", "custom"}, 60, "after_relog"):
+        if self.cfg.get("has_other_server_chars"):
+            if not self.enter_pvp_after_relog():
+                return False
+        elif not self.wait_state({"select", "custom"}, 60, "after_relog"):
             self.log("После переподключения экран не определился, "
                      "пробую продолжить.")
         return self.do_full_flow()
@@ -1077,6 +1136,13 @@ class App(tk.Tk):
         self.sp_rmax.pack(side="left", padx=(4, 0))
         r += 1
 
+        self.var_other_servers = tk.BooleanVar()
+        self.cb_other_servers = ttk.Checkbutton(
+            left, text="Есть персонажи на других серверах",
+            variable=self.var_other_servers)
+        self.cb_other_servers.grid(row=r, column=0, columnspan=2, sticky="w")
+        r += 1
+
         self.var_stop_success = tk.BooleanVar()
         ttk.Checkbutton(left, text="Остановиться после успешного создания",
                         variable=self.var_stop_success).grid(row=r, column=0,
@@ -1125,7 +1191,8 @@ class App(tk.Tk):
         else:
             self.custom_frame.grid()
         self.cb_relog.configure(state="disabled" if simple else "normal")
-        for widget in (self.cb_relog, self.relog_intervals):
+        for widget in (self.cb_relog, self.relog_intervals,
+                       self.cb_other_servers):
             if simple:
                 widget.grid_remove()
             else:
@@ -1185,6 +1252,7 @@ class App(tk.Tk):
         self.var_relog.set(c["relog_enabled"])
         self.sp_rmin.delete(0, "end"); self.sp_rmin.insert(0, str(c["relog_min"]))
         self.sp_rmax.delete(0, "end"); self.sp_rmax.insert(0, str(c["relog_max"]))
+        self.var_other_servers.set(c["has_other_server_chars"])
         self.var_stop_success.set(c["stop_on_success"])
         self.var_debug.set(c["debug_shots"])
         self.var_test.set(c.get("test_mode", False))
@@ -1205,6 +1273,7 @@ class App(tk.Tk):
         c["relog_enabled"] = self.var_relog.get() and not self.var_simple.get()
         c["relog_min"] = int(self.sp_rmin.get())
         c["relog_max"] = int(self.sp_rmax.get())
+        c["has_other_server_chars"] = self.var_other_servers.get()
         c["stop_on_success"] = self.var_stop_success.get()
         c["debug_shots"] = self.var_debug.get()
         c["test_mode"] = self.var_test.get()
