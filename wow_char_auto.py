@@ -183,7 +183,9 @@ INSTRUCTION = """ИНСТРУКЦИЯ
 ТЕСТ РЕЛОГА
 - Нажми кнопку "Тест релога (30 сек × 3)": программа настроит персонажа,
   затем выполнит 3 релога с интервалом 30 секунд и после каждого повторит
-  настройку. "Завершить" не нажимается, остановка после успеха отключена.
+  настройку. Перед каждым релогом сообщение и звуковой сигнал укажут, что
+  персонаж готов. "Завершить" и опасный Enter не нажимаются: создание
+  персонажа в тесте заблокировано. Остановка после успеха отключена.
   Для досрочной остановки нажми "Стоп".
 
 УПРОЩЁННЫЙ РЕЖИМ
@@ -205,7 +207,9 @@ INSTRUCTION = """ИНСТРУКЦИЯ
   кнопками "Назад": кастомизация → выбор расы (1 секунда) → список PvP
   (5 секунд) → переподключение (10 секунд). После Enter программа ждет
   20 секунд, нажимает "Свод правил", через 5 секунд выбирает PvP,
-  нажимает "Выбрать" и ждет 30 секунд до экрана создания персонажа.
+  нажимает "Выбрать" и ждет 30 секунд. Если открылся список персонажей,
+  нажимает "Создание персонажа", ждет 2 секунды и продолжает настройку
+  после появления экрана выбора расы и класса.
 - При появлении списка персонажей программа считает создание успешным
   и останавливается (если не снят флажок "Остановиться после успеха").
 
@@ -279,6 +283,7 @@ POS = {
     "feature_ystart": 0.2833,   # у нежити 0.2208 (см. RACES)
     "reconnect": (0.5, 0.491),
     "charlist_rules": (0.566, 0.027),
+    "new_character": (0.865, 0.900),
     "realm_pvp": (0.434, 0.520),
     "realm_choose": (0.932, 0.953),
     # контрольные точки для определения состояния экрана
@@ -312,17 +317,28 @@ class Bot:
         return (x0 + fx * cw, y0 + fy * ch)
 
     def click(self, fx, fy, desc=""):
+        if self.cfg.get("relog_test") and (fx, fy) == POS["finish"]:
+            self.log("ТЕСТ РЕЛОГА: клик по «Завершить» заблокирован.")
+            return False
         x, y = self.abs(fx, fy)
         x += random.uniform(-3, 3)
         y += random.uniform(-2, 2)
         pyautogui.click(int(x), int(y))
         if desc:
             self.log(f"Клик: {desc}")
+        return True
 
     def press(self, key, desc=""):
+        if self.cfg.get("relog_test") and key.lower() == "enter":
+            state = self.classify("relog_test_enter_guard")
+            if state not in {"reconnect", "select"}:
+                self.log("ТЕСТ РЕЛОГА: Enter заблокирован — подтверждён только "
+                         f"экран '{state}', а не переподключение или выбор расы.")
+                return False
         pyautogui.press(key)
         if desc:
             self.log(f"Клавиша: {desc}")
+        return True
 
     def sleep(self, seconds):
         end = time.time() + seconds
@@ -478,19 +494,28 @@ class Bot:
         p_recon = self.pixel(*POS["probe_reconnect"])
         p_right = self.pixel(*POS["probe_right"])
         p_newchar = self.pixel(*POS["probe_newchar"])
-        recon = self.is_red(p_recon)
-        if recon:
+        p_create = self.pixel(*POS["new_character"])
+        dark_reconnect = (75 <= p_recon[0] <= 160
+                          and p_recon[1] < 30 and p_recon[2] < 30)
+        dark_create = (75 <= p_create[0] <= 160
+                       and p_create[1] < 30 and p_create[2] < 30)
+        recon = ((self.is_red(p_recon) or dark_reconnect)
+                 and sum(p_right) < 60)
+        charlist = (self.is_red(p_newchar)
+                    and (self.is_red(p_create) or dark_create))
+        if charlist:
+            state = "charlist"
+        elif recon:
             state = "reconnect"
         elif self.is_bright(p_gender):
             state = "select"
         elif self.is_red(p_right) or self.is_grey_button(p_right):
             state = "custom"
-        elif self.is_red(p_newchar):
-            state = "charlist"
         else:
             state = "unknown"
         self.log(f"Экран: {state} (пиксели: пол={p_gender}, центр={p_recon},"
-                 f" угол={p_right}, новая запись={p_newchar})")
+                 f" угол={p_right}, новая запись={p_newchar},"
+                 f" создание={p_create})")
         self.screenshot_debug(f"{tag}_{state}")
         return state
 
@@ -735,7 +760,17 @@ class Bot:
         self.sleep(1)
         self.click(*POS["realm_choose"], "Выбрать PvP-сервер")
         self.sleep(30)
-        if not self.wait_state({"select"}, 10, "after_relog_pvp"):
+        state = self.wait_state({"select", "charlist"}, 10, "after_relog_pvp")
+        if state == "charlist":
+            self.log("На PvP-сервере уже есть персонажи — открываю создание "
+                     "нового персонажа.")
+            self.click(*POS["new_character"], "Создание персонажа")
+            self.sleep(2)
+            if self.wait_state({"select"}, 10, "after_new_character") != "select":
+                self.log("После нажатия «Создание персонажа» экран выбора расы "
+                         "и класса не появился.")
+                return False
+        elif state != "select":
             self.log("После выбора PvP-сервера экран создания персонажа "
                      "не определился, пробую продолжить.")
         return True
@@ -776,7 +811,12 @@ class Bot:
             if state != "reconnect":
                 self.press("esc", "Esc (повторно)")
                 self.sleep(2)
-        self.press("enter", "Enter (переподключение)")
+                if self.classify("relog_reconnect_retry") != "reconnect":
+                    self.log("Экран переподключения не подтверждён. "
+                             "Enter не нажимается.")
+                    return False
+        if not self.press("enter", "Enter (переподключение)"):
+            return False
         if self.cfg.get("has_other_server_chars"):
             if not self.enter_pvp_after_relog():
                 return False
@@ -785,18 +825,31 @@ class Bot:
                      "пробую продолжить.")
         return self.do_full_flow()
 
+    def notify_relog_test_ready(self):
+        self.log("ТЕСТ РЕЛОГА: персонаж настроен до кнопки «Завершить». "
+                 "Создание не выполняется; продолжаю тест.")
+        try:
+            import winsound
+            winsound.MessageBeep(winsound.MB_ICONASTERISK)
+        except Exception:
+            self.log("(звуковой сигнал недоступен)")
+
     def run_relog_test(self):
         self.log("=== ТЕСТ РЕЛОГА: 3 релога с интервалом 30 секунд ===")
         self.log("'Завершить' не нажимается; остановка после успеха отключена.")
         flow_ok = self.do_full_flow()
-        if not flow_ok:
+        if flow_ok:
+            self.notify_relog_test_ready()
+        else:
             self.log("Начальная настройка персонажа не удалась. "
                      "Тест релога продолжится.")
         for number in range(1, 4):
             self.log(f"Ожидание 30 секунд перед релогом {number}/3.")
             self.sleep(30)
             self.log(f"=== Тестовый релог {number}/3 ===")
-            if not self.do_relog():
+            if self.do_relog():
+                self.notify_relog_test_ready()
+            else:
                 self.log(f"Настройка персонажа после релога {number}/3 "
                          "не удалась. Тест продолжится.")
         self.log("=== Тест релога завершён: выполнено 3 релога. ===")
