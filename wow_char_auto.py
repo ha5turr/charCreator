@@ -33,6 +33,7 @@ pyautogui.FAILSAFE = True  # экстренная остановка: мышь �
 pyautogui.PAUSE = 0.05
 
 APP_NAME = "WoW Forever — Автосоздание персонажа"
+APP_VERSION = "0.0.0"
 SETTINGS_FILE = "wow_char_auto_settings.json"
 LOG_FILE = "wow_char_auto_log.txt"
 
@@ -919,7 +920,7 @@ class Bot:
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title(APP_NAME)
+        self.title(f"{APP_NAME} — v{APP_VERSION}")
         self.geometry("980x640")
         self.minsize(900, 600)
         self.cfg = load_settings()

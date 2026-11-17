@@ -60,6 +60,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Check out release sources
+        uses: actions/checkout@v4
+
       - name: Download Windows build
         uses: actions/download-artifact@v4
         with:
@@ -71,9 +74,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "build-${{ github.run_number }}-${{ github.run_attempt }}"
+          $match = Select-String -Path wow_char_auto.py -Pattern '^APP_VERSION = "(\d+\.\d+\.\d+)"$'
+          if (-not $match) {
+            throw "APP_VERSION was not found in wow_char_auto.py."
+          }
+          $version = $match.Matches[0].Groups[1].Value
+          $tag = "v$version"
           gh release create $tag release/WoWCharAuto.exe `
             --repo "${{ github.repository }}" `
             --target "${{ github.sha }}" `
-            --title "WoWCharAuto build ${{ github.run_number }}" `
-            --notes "Автоматическая сборка ветки release. Коммит: ${{ github.sha }}"
+            --title "WoWCharAuto v$version" `
+            --notes "Автоматическая сборка ветки release. Версия: $version. Коммит: ${{ github.sha }}"
