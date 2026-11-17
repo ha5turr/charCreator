@@ -687,6 +687,26 @@ class Bot:
         """Упрощённый режим: только 'Завершить' + 'ОК'. Пользователь сам
         настроил персонажа; бот лишь повторяет попытки создания."""
         self.log("=== УПРОЩЁННЫЙ РЕЖИМ: цикл «Завершить» + «ОК» ===")
+        if self.cfg.get("test_mode"):
+            # холостой прогон: ничего не нажимаем, только проверяем экран
+            state = self.classify("simple_test")
+            try:
+                import winsound
+                if state == "custom":
+                    for _ in range(3):
+                        winsound.MessageBeep(winsound.MB_ICONASTERISK)
+                        time.sleep(0.7)
+                    self.log("Тест пройден: бот на месте экрана кастомизации"
+                             " и нажал бы «Завершить». В обычном запуске здесь"
+                             " начался бы цикл попыток.")
+                else:
+                    winsound.MessageBeep(winsound.MB_ICONHAND)
+                    self.log(f"Тест НЕ ПРОЙДЕН: ожидался экран кастомизации,"
+                             f" определён '{state}'. Открой создание"
+                             f" персонажа и повтори.")
+            except Exception:
+                self.log("(звуковой сигнал недоступен)")
+            return
         attempt = 0
         while not self.is_stopped():
             attempt += 1
